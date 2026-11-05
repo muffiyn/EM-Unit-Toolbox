@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "em-unit-toolbox"
+version = "0.1.0"
+description = "Unit conversion for energetic-materials data (energy, specific energy, impact energy, and more)"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = []
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.scripts]
+em-units = "em_units.cli:main"
+
+[project.urls]
+Repository = "https://github.com/muffiyn/EM-Unit-Toolbox"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/em_units"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests", "src"]
+addopts = "--doctest-modules"
