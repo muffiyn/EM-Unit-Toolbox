@@ -13,7 +13,7 @@ height into an impact energy.
 pip install git+https://github.com/muffiyn/EM-Unit-Toolbox.git
 ```
 
-Requires Python 3.9+.
+Requires Python 3.10+.
 ## Usage
 ### Single-unit conversions
 

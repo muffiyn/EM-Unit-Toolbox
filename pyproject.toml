@@ -7,7 +7,7 @@ name = "em-unit-toolbox"
 version = "0.1.0"
 description = "Unit conversion for energetic-materials data (energy, specific energy, impact energy, and more)"
 readme = "README.md"
-requires-python = ">=3.9"
+requires-python = ">=3.10"
 dependencies = []
 classifiers = [
     "Programming Language :: Python :: 3",
