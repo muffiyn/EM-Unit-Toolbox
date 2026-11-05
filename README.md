@@ -11,13 +11,11 @@ height into an impact energy.
 
 ```bash
 pip install git+https://github.com/muffiyn/EM-Unit-Toolbox.git
-# or, from a clone:
-pip install -e ".[test]"
 ```
 
 Requires Python 3.9+.
-
-## Single-unit conversions
+## Usage
+### Single-unit conversions
 
 ```python
 from em_units import convert
@@ -33,9 +31,9 @@ convert(8.75, "mm/us", "m/s")     # 8750.0
 
 Converting between dimensions (e.g. `J` to `J/g`) raises `UnitError`.
 
-## Two-measurement conversions
+### Two-measurement conversions
 
-### Gravitational potential energy (drop-weight impact)
+#### Gravitational potential energy (drop-weight impact)
 
 E = m·g·h, with standard gravity g = 9.80665 m/s² by default.
 
@@ -52,7 +50,7 @@ drop_height(7.5, "J", 2.5, "kg", to="cm")         # 30.59 cm
 drop_mass(7.5, "J", 30, "cm", to="kg")            # 2.549 kg
 ```
 
-### Specific energy × mass
+#### Specific energy × mass
 
 ```python
 from em_units import specific_to_total, total_to_specific
@@ -61,7 +59,7 @@ specific_to_total(1000, "cal/g", 10, "g", to="kJ")  # 41.84
 total_to_specific(41.84, "kJ", 10, "g", to="cal/g") # 1000.0
 ```
 
-### Molar ↔ specific energy (needs molar mass in g/mol)
+#### Molar ↔ specific energy (needs molar mass in g/mol)
 
 ```python
 from em_units import molar_to_specific, specific_to_molar
@@ -70,20 +68,9 @@ molar_to_specific(70.3, "kJ/mol", 222.12, to="cal/g")  # RDX heat of formation
 specific_to_molar(-70.5, "cal/g", 227.13, to="kJ/mol")
 ```
 
-## Command line
-
-```console
-$ em-units convert 1500 cal/g MJ/kg
-1500 cal/g = 6.276 MJ/kg
-$ em-units impact --mass "2.5 kg" --height "30 cm"
-2.5 kg dropped 30 cm = 7.35499 J
-$ em-units units energy
-energy: J, mJ, kJ, MJ, GJ, erg, cal, kcal, cal_IT, kcal_IT, eV, Wh, kWh, BTU, ft*lbf, in*lbf, kgf*m, kgf*cm, g_TNT, kg_TNT, t_TNT
-```
-
 ## Supported units
 
-Run `em_units.list_units()` (or `em-units units`) for the full list. Highlights:
+Run `em_units.list_units()` for the full list. Highlights:
 
 | Dimension | Units |
 |---|---|
@@ -108,10 +95,3 @@ unambiguous case-insensitive match (`Joules`) is accepted as a fallback.
 - **TNT equivalent** uses the conventional 4184 J/g (1 kcal/g).
 - **`kg*m` / `kg·m`** are treated as kilogram-force metres (9.80665 J), as in
   drop-weight impact sensitivity reports.
-
-## Development
-
-```bash
-pip install -e ".[test]"
-pytest
-```
