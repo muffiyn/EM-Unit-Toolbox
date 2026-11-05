@@ -59,11 +59,11 @@ def test_round_trip_every_unit():
 
 
 def test_aliases_and_spacing():
-    assert get_unit("ergs") is get_unit("erg")
-    assert get_unit("Joules") is get_unit("J")  # unambiguous case-insensitive fallback
-    assert get_unit("J / g") is get_unit("J/g")
-    assert get_unit("kg·m") is get_unit("kgf*m")
-    assert get_unit("g/cc") is get_unit("g/cm^3")
+    assert get_unit("ergs") == get_unit("erg")
+    assert get_unit("Joules") == get_unit("J")  # unambiguous case-insensitive fallback
+    assert get_unit("J / g") == get_unit("J/g")
+    assert get_unit("kg·m") == get_unit("kgf*m")
+    assert get_unit("g/cc") == get_unit("g/cm^3")
 
 
 def test_case_sensitive_prefixes_are_distinct():

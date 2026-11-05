@@ -59,33 +59,71 @@ specific_to_total(1000, "cal/g", 10, "g", to="kJ")  # 41.84
 total_to_specific(41.84, "kJ", 10, "g", to="cal/g") # 1000.0
 ```
 
-#### Molar ↔ specific energy (needs molar mass in g/mol)
+#### Molar ↔ specific energy (needs the molar mass)
 
 ```python
 from em_units import molar_to_specific, specific_to_molar
 
-molar_to_specific(70.3, "kJ/mol", 222.12, to="cal/g")  # RDX heat of formation
+molar_to_specific(70.3, "kJ mol-1", 222.12, to="cal g-1")  # RDX heat of formation
 specific_to_molar(-70.5, "cal/g", 227.13, to="kJ/mol")
+molar_to_specific(70.3, "kJ/mol", 0.22212, molar_mass_unit="kg mol-1")
+```
+
+## Unit notation
+
+Units can be written however the source paper or instrument writes them. All of
+these are the same unit:
+
+```
+J/g    J g-1    J g^-1    J·g⁻¹    J*g**-1    J.g-1    joules per gram
+```
+
+- **Products:** separate factors with a space, `*`, `·`, `.` or `-` (e.g.
+  `N m`, `ft-lbf`, `kg.m-3`).
+- **Exponents:** `m^3`, `m**3`, `m3`, `m³`, `s^-1`, `s-1`, `s⁻¹`, and also on
+  groups: `(m/s)^2`.
+- **Division:** `/`, `per`, or negative exponents. Everything after a `/` is
+  in the denominator, so `J/g K`, `J/g/K` and `J/(g·K)` are the same.
+- **Prefixes:** any SI prefix on any metric unit (`kJ`, `µs`, `us`, `GPa`,
+  `kt TNT`), plus spelled-out names (`kilojoules`, `grams`, `cubic centimetre`).
+- **Temperature:** `°C`/`°F` are accepted inside compound units as temperature
+  intervals (`cal/(g·°C)`). A bare `°C` raises an error, since converting it to K
+  needs an offset.
+- **Case:** symbols are case-sensitive first, so `mJ` and `MJ` stay distinct.
+  An unambiguous case-insensitive match (`KJ/KG`, `Joules`) is accepted, and
+  an ambiguous one (`MPA`: mPa or MPa?) raises an error.
+
+Any combination works, and two units convert whenever their dimensions match:
+
+```python
+convert(1, "kcal mol-1", "kJ·mol⁻¹")      # 4.184
+convert(1, "g cm-3", "kg/m3")             # 1000.0
+convert(1, "J cm-3", "MPa")               # 1.0  (energy density = pressure)
+convert(1, "cal/(g·°C)", "J g-1 K-1")     # 4.184
+convert(1, "eV/atom", "kJ/mol")           # 96.485...
 ```
 
 ## Supported units
 
-Run `em_units.list_units()` for the full list. Highlights:
+The building blocks are:
 
-| Dimension | Units |
+| Kind | Units |
 |---|---|
-| Energy | J, mJ, kJ, MJ, GJ, erg, cal, kcal, cal_IT, eV, Wh, kWh, BTU, ft·lbf, in·lbf, kgf·m, kgf·cm, g/kg/t TNT |
-| Specific energy | J/kg, J/g, kJ/kg, kJ/g, MJ/kg, cal/g, kcal/kg, kcal/g, erg/g, BTU/lb |
-| Molar energy | J/mol, kJ/mol, cal/mol, kcal/mol, eV/molecule |
-| Mass | kg, g, mg, t, lb, oz, gr (grain) |
-| Length | m, cm, mm, µm, km, in, ft |
-| Pressure | Pa, kPa, MPa, GPa, bar, kbar, Mbar, atm, psi, dyn/cm² |
-| Velocity | m/s, km/s, mm/µs, cm/µs, ft/s |
-| Density | kg/m³, g/cm³ (g/cc), lb/in³, lb/ft³ |
+| Energy | J, erg, cal, cal_IT, Cal (= kcal), eV, Wh, BTU, g_TNT, t_TNT |
+| Mass | g, t, lb, oz, gr (grain) |
+| Length | m, Å, in, ft, yd |
+| Time | s, min, h |
+| Amount | mol, molecule / atom / particle |
+| Temperature | K, °C and °F (intervals only) |
+| Force | N, dyn, lbf, kgf (kp) |
+| Pressure | Pa, bar, atm, psi, ksi, Torr, mmHg, barye |
+| Power | W |
+| Volume | L, cc |
+| Acceleration | gn (standard gravity) |
 
-Common spellings are accepted (`ergs`, `joules`, `g/cc`, `kg·m`, `J / g`).
-Lookups are case-sensitive first, so `mJ` and `MJ` stay distinct; an
-unambiguous case-insensitive match (`Joules`) is accepted as a fallback.
+`em_units.list_units()` (or `em-units units`) lists common combinations for
+each dimension: energy, specific energy, molar energy, molar mass, pressure,
+velocity, density, heat capacities, and more.
 
 ## Conventions
 
@@ -93,5 +131,6 @@ unambiguous case-insensitive match (`Joules`) is accepted as a fallback.
   convention for heats of formation, explosion and combustion. The
   International Table calorie (4.1868 J) is available as `cal_IT`.
 - **TNT equivalent** uses the conventional 4184 J/g (1 kcal/g).
-- **`kg*m` / `kg·m`** are treated as kilogram-force metres (9.80665 J), as in
-  drop-weight impact sensitivity reports.
+- **`kg*m` / `kg·m` / `kg m`** are treated as kilogram-force metres
+  (9.80665 J), as in drop-weight impact sensitivity reports. Likewise `ft-lb`
+  means foot-pound force.

@@ -1,20 +1,24 @@
-"""Unit registry for quantities common in energetic-materials work.
+"""Unit definitions for quantities common in energetic-materials work.
 
-Every unit belongs to exactly one *dimension* (energy, specific energy, mass, ...)
-and carries a multiplicative factor that converts a value in that unit to the
-dimension's SI base unit. Conversions are only allowed within a dimension.
+Units are built from *atoms* (g, m, s, mol, J, cal, erg, Pa, lb, ...). Each atom
+has a factor to SI and a dimension vector over (mass, length, time, amount,
+temperature). Compound units such as ``kJ kg-1`` or ``J/(mol·K)`` are parsed
+into products of atoms (see :mod:`em_units.parsing`), so any combination is
+supported and two units are convertible whenever their dimension vectors match.
 
 Calorie convention
 ------------------
 ``cal`` is the *thermochemical* calorie (exactly 4.184 J), which is the
 convention used for heats of formation, explosion and combustion in the
-energetic-materials literature. The International Steam Table calorie
-(4.1868 J) is available as ``cal_IT``.
+energetic-materials literature. The International Table calorie (4.1868 J) is
+available as ``cal_IT``.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
+from fractions import Fraction
 
 # --- Exact physical constants -------------------------------------------------
 
@@ -30,40 +34,106 @@ FOOT = 0.3048  # m, exact
 BTU_IT = 1055.05585262  # J, International Table BTU
 TNT_EQUIVALENT_PER_GRAM = 4184.0  # J/g, conventional TNT equivalence (1 kcal/g)
 POUND_FORCE = POUND * STANDARD_GRAVITY  # N
+ATMOSPHERE = 101325.0  # Pa
 
 # --- Dimensions ---------------------------------------------------------------
+
+Dims = tuple  # (mass, length, time, amount, temperature) exponents
+DIM_SYMBOLS = ("M", "L", "T", "N", "Θ")
+SI_SYMBOLS = ("kg", "m", "s", "mol", "K")
+
+
+def _d(M: int = 0, L: int = 0, T: int = 0, N: int = 0, K: int = 0) -> Dims:
+    return (M, L, T, N, K)
+
 
 ENERGY = "energy"
 SPECIFIC_ENERGY = "specific energy"
 MOLAR_ENERGY = "molar energy"
+MOLAR_MASS = "molar mass"
 MASS = "mass"
 LENGTH = "length"
+TIME = "time"
+AMOUNT = "amount of substance"
+TEMPERATURE = "temperature"
 PRESSURE = "pressure"
 VELOCITY = "velocity"
 DENSITY = "density"
 ACCELERATION = "acceleration"
+FORCE = "force"
+POWER = "power"
+AREA = "area"
+VOLUME = "volume"
+SPECIFIC_VOLUME = "specific volume"
+MOLAR_VOLUME = "molar volume"
+HEAT_CAPACITY = "heat capacity"
+SPECIFIC_HEAT_CAPACITY = "specific heat capacity"
+MOLAR_HEAT_CAPACITY = "molar heat capacity"
+FREQUENCY = "frequency"
+DIMENSIONLESS = "dimensionless"
 
-BASE_UNITS = {
-    ENERGY: "J",
-    SPECIFIC_ENERGY: "J/kg",
-    MOLAR_ENERGY: "J/mol",
-    MASS: "kg",
-    LENGTH: "m",
-    PRESSURE: "Pa",
-    VELOCITY: "m/s",
-    DENSITY: "kg/m^3",
-    ACCELERATION: "m/s^2",
+# Named dimension -> (dimension vector, SI symbol). Energy density (J/m^3)
+# shares the pressure vector, so it is reported (and converts) as pressure.
+DIMENSIONS: dict[str, tuple[Dims, str]] = {
+    ENERGY: (_d(M=1, L=2, T=-2), "J"),
+    SPECIFIC_ENERGY: (_d(L=2, T=-2), "J/kg"),
+    MOLAR_ENERGY: (_d(M=1, L=2, T=-2, N=-1), "J/mol"),
+    MOLAR_MASS: (_d(M=1, N=-1), "kg/mol"),
+    MASS: (_d(M=1), "kg"),
+    LENGTH: (_d(L=1), "m"),
+    TIME: (_d(T=1), "s"),
+    AMOUNT: (_d(N=1), "mol"),
+    TEMPERATURE: (_d(K=1), "K"),
+    PRESSURE: (_d(M=1, L=-1, T=-2), "Pa"),
+    VELOCITY: (_d(L=1, T=-1), "m/s"),
+    DENSITY: (_d(M=1, L=-3), "kg/m^3"),
+    ACCELERATION: (_d(L=1, T=-2), "m/s^2"),
+    FORCE: (_d(M=1, L=1, T=-2), "N"),
+    POWER: (_d(M=1, L=2, T=-3), "W"),
+    AREA: (_d(L=2), "m^2"),
+    VOLUME: (_d(L=3), "m^3"),
+    SPECIFIC_VOLUME: (_d(M=-1, L=3), "m^3/kg"),
+    MOLAR_VOLUME: (_d(L=3, N=-1), "m^3/mol"),
+    HEAT_CAPACITY: (_d(M=1, L=2, T=-2, K=-1), "J/K"),
+    SPECIFIC_HEAT_CAPACITY: (_d(L=2, T=-2, K=-1), "J/(kg·K)"),
+    MOLAR_HEAT_CAPACITY: (_d(M=1, L=2, T=-2, N=-1, K=-1), "J/(mol·K)"),
+    FREQUENCY: (_d(T=-1), "1/s"),
+    DIMENSIONLESS: (_d(), "1"),
 }
+_NAME_BY_DIMS = {dims: name for name, (dims, _) in DIMENSIONS.items()}
+
+# Kept for backwards compatibility: dimension name -> SI symbol.
+BASE_UNITS = {name: symbol for name, (_, symbol) in DIMENSIONS.items()}
 
 
-@dataclass(frozen=True)
+def dimension_name(dims: Dims) -> str:
+    """Name of a dimension vector, e.g. ``"energy"``, or a formula like ``"M L^-1"``."""
+    if dims in _NAME_BY_DIMS:
+        return _NAME_BY_DIMS[dims]
+    return " ".join(
+        sym if p == 1 else f"{sym}^{p}" for sym, p in zip(DIM_SYMBOLS, dims) if p
+    )
+
+
+def si_symbol(dims: Dims) -> str:
+    """SI unit symbol for a dimension vector, e.g. ``"J"`` or ``"kg·m^-1"``."""
+    name = _NAME_BY_DIMS.get(dims)
+    if name is not None:
+        return DIMENSIONS[name][1]
+    return "·".join(
+        sym if p == 1 else f"{sym}^{p}" for sym, p in zip(SI_SYMBOLS, dims) if p
+    )
+
+
+@dataclass(frozen=True, eq=False)
 class Unit:
-    """A unit of measure: its canonical symbol, dimension and SI factor."""
+    """A (possibly compound) unit: its symbol, dimension and factor to SI."""
 
     symbol: str
     dimension: str
-    factor: float  # value_in_base = value_in_unit * factor
-    name: str = ""
+    factor: float  # value_in_SI = value_in_unit * factor
+    dims: Dims = ()
+    exact: Fraction | None = field(default=None, repr=False)  # exact factor, when known
 
     def to_base(self, value: float) -> float:
         return value * self.factor
@@ -71,105 +141,145 @@ class Unit:
     def from_base(self, value: float) -> float:
         return value / self.factor
 
+    def __eq__(self, other: object) -> bool:
+        if not isinstance(other, Unit):
+            return NotImplemented
+        return self.dims == other.dims and math.isclose(self.factor, other.factor, rel_tol=1e-12)
 
-# Each entry: (canonical symbol, dimension, factor to SI base, name, aliases)
-_DEFINITIONS: list[tuple[str, str, float, str, tuple[str, ...]]] = [
-    # Energy ------------------------------------------------------------------
-    ("J", ENERGY, 1.0, "joule", ("joule", "joules", "N*m", "N·m", "Nm", "N m")),
-    ("mJ", ENERGY, 1e-3, "millijoule", ("millijoule", "millijoules")),
-    ("kJ", ENERGY, 1e3, "kilojoule", ("kilojoule", "kilojoules")),
-    ("MJ", ENERGY, 1e6, "megajoule", ("megajoule", "megajoules")),
-    ("GJ", ENERGY, 1e9, "gigajoule", ("gigajoule", "gigajoules")),
-    ("erg", ENERGY, ERG, "erg", ("ergs",)),
-    ("cal", ENERGY, CAL_TH, "thermochemical calorie", ("calorie", "calories", "cal_th")),
-    ("kcal", ENERGY, 1e3 * CAL_TH, "thermochemical kilocalorie", ("kilocalorie", "kilocalories", "Cal", "kcal_th")),
-    ("cal_IT", ENERGY, CAL_IT, "International Table calorie", ()),
-    ("kcal_IT", ENERGY, 1e3 * CAL_IT, "International Table kilocalorie", ()),
-    ("eV", ENERGY, ELECTRON_VOLT, "electronvolt", ("electronvolt", "electronvolts")),
-    ("Wh", ENERGY, 3600.0, "watt-hour", ("watt-hour", "watt hour")),
-    ("kWh", ENERGY, 3.6e6, "kilowatt-hour", ("kilowatt-hour", "kilowatt hour")),
-    ("BTU", ENERGY, BTU_IT, "British thermal unit", ("Btu", "btu")),
-    ("ft*lbf", ENERGY, FOOT * POUND_FORCE, "foot-pound force", ("ft·lbf", "ft-lbf", "ft lbf", "ft-lb", "ft*lb", "foot-pound")),
-    ("in*lbf", ENERGY, INCH * POUND_FORCE, "inch-pound force", ("in·lbf", "in-lbf", "in lbf", "in-lb", "in*lb")),
-    # Drop-weight impact sensitivity is often reported in kilogram-force metres.
-    ("kgf*m", ENERGY, STANDARD_GRAVITY, "kilogram-force metre", ("kgf·m", "kgf-m", "kg*m", "kg·m", "kg-m", "kpm")),
-    ("kgf*cm", ENERGY, STANDARD_GRAVITY / 100, "kilogram-force centimetre", ("kgf·cm", "kgf-cm", "kg*cm", "kg·cm", "kg-cm")),
-    ("g_TNT", ENERGY, TNT_EQUIVALENT_PER_GRAM, "gram of TNT equivalent", ("g TNT", "gTNT")),
-    ("kg_TNT", ENERGY, 1e3 * TNT_EQUIVALENT_PER_GRAM, "kilogram of TNT equivalent", ("kg TNT", "kgTNT")),
-    ("t_TNT", ENERGY, 1e6 * TNT_EQUIVALENT_PER_GRAM, "tonne of TNT equivalent", ("t TNT", "tTNT", "ton TNT")),
-    # Specific energy (energy per mass) ---------------------------------------
-    ("J/kg", SPECIFIC_ENERGY, 1.0, "joule per kilogram", ()),
-    ("J/g", SPECIFIC_ENERGY, 1e3, "joule per gram", ()),
-    ("kJ/kg", SPECIFIC_ENERGY, 1e3, "kilojoule per kilogram", ()),
-    ("kJ/g", SPECIFIC_ENERGY, 1e6, "kilojoule per gram", ()),
-    ("MJ/kg", SPECIFIC_ENERGY, 1e6, "megajoule per kilogram", ()),
-    ("cal/g", SPECIFIC_ENERGY, CAL_TH * 1e3, "calorie per gram", ()),
-    ("cal/kg", SPECIFIC_ENERGY, CAL_TH, "calorie per kilogram", ()),
-    ("kcal/kg", SPECIFIC_ENERGY, CAL_TH * 1e3, "kilocalorie per kilogram", ()),
-    ("kcal/g", SPECIFIC_ENERGY, CAL_TH * 1e6, "kilocalorie per gram", ()),
-    ("cal_IT/g", SPECIFIC_ENERGY, CAL_IT * 1e3, "IT calorie per gram", ()),
-    ("erg/g", SPECIFIC_ENERGY, ERG * 1e3, "erg per gram", ("ergs/g",)),
-    ("BTU/lb", SPECIFIC_ENERGY, BTU_IT / POUND, "BTU per pound", ("Btu/lb", "btu/lb")),
-    # Molar energy (heats of formation, etc.) ---------------------------------
-    ("J/mol", MOLAR_ENERGY, 1.0, "joule per mole", ()),
-    ("kJ/mol", MOLAR_ENERGY, 1e3, "kilojoule per mole", ()),
-    ("cal/mol", MOLAR_ENERGY, CAL_TH, "calorie per mole", ()),
-    ("kcal/mol", MOLAR_ENERGY, CAL_TH * 1e3, "kilocalorie per mole", ()),
-    ("eV/molecule", MOLAR_ENERGY, ELECTRON_VOLT * AVOGADRO, "electronvolt per molecule", ("eV/particle",)),
-    # Mass ---------------------------------------------------------------------
-    ("kg", MASS, 1.0, "kilogram", ("kilogram", "kilograms")),
-    ("g", MASS, 1e-3, "gram", ("gram", "grams")),
-    ("mg", MASS, 1e-6, "milligram", ("milligram", "milligrams")),
-    ("t", MASS, 1e3, "tonne", ("tonne", "tonnes", "metric ton")),
-    ("lb", MASS, POUND, "pound", ("lbs", "lbm", "pound", "pounds")),
-    ("oz", MASS, POUND / 16, "ounce", ("ounce", "ounces")),
-    ("gr", MASS, POUND / 7000, "grain", ("grain", "grains")),
-    # Length -------------------------------------------------------------------
-    ("m", LENGTH, 1.0, "metre", ("meter", "meters", "metre", "metres")),
-    ("cm", LENGTH, 1e-2, "centimetre", ("centimeter", "centimeters", "centimetre", "centimetres")),
-    ("mm", LENGTH, 1e-3, "millimetre", ("millimeter", "millimeters", "millimetre", "millimetres")),
-    ("um", LENGTH, 1e-6, "micrometre", ("µm", "μm", "micron", "microns")),
-    ("km", LENGTH, 1e3, "kilometre", ("kilometer", "kilometers", "kilometre", "kilometres")),
-    ("in", LENGTH, INCH, "inch", ("inch", "inches")),
-    ("ft", LENGTH, FOOT, "foot", ("foot", "feet")),
-    # Pressure (detonation / CJ pressure) --------------------------------------
-    ("Pa", PRESSURE, 1.0, "pascal", ("pascal", "pascals")),
-    ("kPa", PRESSURE, 1e3, "kilopascal", ()),
-    ("MPa", PRESSURE, 1e6, "megapascal", ()),
-    ("GPa", PRESSURE, 1e9, "gigapascal", ()),
-    ("bar", PRESSURE, 1e5, "bar", ("bars",)),
-    ("kbar", PRESSURE, 1e8, "kilobar", ("kilobar", "kilobars")),
-    ("Mbar", PRESSURE, 1e11, "megabar", ("megabar", "megabars")),
-    ("atm", PRESSURE, 101325.0, "standard atmosphere", ()),
-    ("psi", PRESSURE, POUND_FORCE / INCH**2, "pound-force per square inch", ()),
-    ("dyn/cm^2", PRESSURE, 0.1, "dyne per square centimetre", ("dyn/cm2", "dyne/cm^2", "dyne/cm2", "barye")),
-    # Velocity (detonation velocity) -------------------------------------------
-    ("m/s", VELOCITY, 1.0, "metre per second", ()),
-    ("km/s", VELOCITY, 1e3, "kilometre per second", ()),
-    ("mm/us", VELOCITY, 1e3, "millimetre per microsecond", ("mm/µs", "mm/μs")),
-    ("cm/us", VELOCITY, 1e4, "centimetre per microsecond", ("cm/µs", "cm/μs")),
-    ("ft/s", VELOCITY, FOOT, "foot per second", ("fps",)),
-    # Density ------------------------------------------------------------------
-    ("kg/m^3", DENSITY, 1.0, "kilogram per cubic metre", ("kg/m3",)),
-    ("g/cm^3", DENSITY, 1e3, "gram per cubic centimetre", ("g/cm3", "g/cc", "g/mL", "g/ml")),
-    ("lb/in^3", DENSITY, POUND / INCH**3, "pound per cubic inch", ("lb/in3",)),
-    ("lb/ft^3", DENSITY, POUND / FOOT**3, "pound per cubic foot", ("lb/ft3",)),
-    # Acceleration (for non-standard gravity in potential-energy calculations)
-    ("m/s^2", ACCELERATION, 1.0, "metre per second squared", ("m/s2",)),
-    ("ft/s^2", ACCELERATION, FOOT, "foot per second squared", ("ft/s2",)),
-    ("gn", ACCELERATION, STANDARD_GRAVITY, "standard gravity", ("g0", "g_n")),
-]
+    def __hash__(self) -> int:
+        return hash(self.dims)
 
 
-def _build_registry() -> dict[str, Unit]:
-    registry: dict[str, Unit] = {}
-    for symbol, dimension, factor, name, aliases in _DEFINITIONS:
-        unit = Unit(symbol, dimension, factor, name)
-        for key in (symbol, *aliases):
-            if key in registry:
-                raise ValueError(f"Duplicate unit alias {key!r}")
-            registry[key] = unit
-    return registry
+# --- Atoms ----------------------------------------------------------------------
+
+# symbol -> (factor to SI, dims, accepts SI prefixes)
+ATOMS: dict[str, tuple[float, Dims, bool]] = {}
+# lowercase full name (singular) -> atom symbol; plurals are handled by the parser
+NAMES: dict[str, str] = {}
 
 
-UNITS: dict[str, Unit] = _build_registry()
+def _atom(symbol: str, factor: float, dims: Dims, prefixable: bool = False, names: tuple[str, ...] = (), aliases: tuple[str, ...] = ()) -> None:
+    for key in (symbol, *aliases):
+        if key in ATOMS:
+            raise ValueError(f"Duplicate atom {key!r}")
+        ATOMS[key] = (factor, dims, prefixable)
+    for name in names:
+        if name in NAMES:
+            raise ValueError(f"Duplicate unit name {name!r}")
+        NAMES[name] = symbol
+
+
+_E = DIMENSIONS[ENERGY][0]
+
+# Mass
+_atom("g", 1e-3, _d(M=1), True, ("gram", "gramme"))
+_atom("t", 1e3, _d(M=1), True, ("tonne",))
+_atom("lb", POUND, _d(M=1), False, ("pound",), ("lbm", "lbs"))
+_atom("oz", POUND / 16, _d(M=1), False, ("ounce",))
+_atom("gr", POUND / 7000, _d(M=1), False, ("grain",))
+# Length
+_atom("m", 1.0, _d(L=1), True, ("metre", "meter"))
+_atom("in", INCH, _d(L=1), False, ("inch",))
+_atom("ft", FOOT, _d(L=1), False, ("foot", "feet"))
+_atom("yd", 3 * FOOT, _d(L=1), False, ("yard",))
+_atom("Å", 1e-10, _d(L=1), False, ("angstrom", "ångström"))
+# Time
+_atom("s", 1.0, _d(T=1), True, ("second",), ("sec",))
+_atom("min", 60.0, _d(T=1), False, ("minute",))
+_atom("h", 3600.0, _d(T=1), False, ("hour",), ("hr",))
+# Amount of substance
+_atom("mol", 1.0, _d(N=1), True, ("mole",))
+_atom("molecule", float(1 / Fraction("6.02214076e23")), _d(N=1), False, ("molecule", "particle", "atom"))
+# Temperature (absolute / temperature differences)
+_atom("K", 1.0, _d(K=1), True, ("kelvin",))
+# Degree intervals, for compound units like J/(g·°C). Absolute °C/°F readings
+# need an offset, which the parser rejects (see parsing.parse_unit).
+_atom("degC", 1.0, _d(K=1), False, (), ("deg_C",))
+_atom("degF", 5 / 9, _d(K=1), False, (), ("deg_F",))
+# Energy
+_atom("J", 1.0, _E, True, ("joule",))
+_atom("erg", ERG, _E, True, ("erg",))
+_atom("cal", CAL_TH, _E, True, ("calorie",), ("cal_th",))
+_atom("Cal", 1e3 * CAL_TH, _E, False, (), ("kcal_th",))  # dietary "Calorie" = kcal
+_atom("cal_IT", CAL_IT, _E, True)
+_atom("eV", ELECTRON_VOLT, _E, True, ("electronvolt",))
+_atom("Wh", 3600.0, _E, True)
+_atom("BTU", BTU_IT, _E, False, (), ("Btu", "btu"))
+_atom("g_TNT", TNT_EQUIVALENT_PER_GRAM, _E, True, ("gram_tnt",))
+_atom("t_TNT", 1e6 * TNT_EQUIVALENT_PER_GRAM, _E, True, ("ton_tnt", "tonne_tnt"))
+# Force
+_atom("N", 1.0, _d(M=1, L=1, T=-2), True, ("newton",))
+_atom("dyn", 1e-5, _d(M=1, L=1, T=-2), False, ("dyne",))
+_atom("lbf", POUND_FORCE, _d(M=1, L=1, T=-2), False, ("pound_force",))
+_atom("kgf", STANDARD_GRAVITY, _d(M=1, L=1, T=-2), False, ("kilogram_force",), ("kp",))
+# Pressure
+_atom("Pa", 1.0, _d(M=1, L=-1, T=-2), True, ("pascal",))
+_atom("bar", 1e5, _d(M=1, L=-1, T=-2), True, ("bar",))
+_atom("atm", ATMOSPHERE, _d(M=1, L=-1, T=-2), False, ("atmosphere",))
+_atom("psi", POUND_FORCE / INCH**2, _d(M=1, L=-1, T=-2), True)
+_atom("ksi", 1e3 * POUND_FORCE / INCH**2, _d(M=1, L=-1, T=-2))
+_atom("Torr", ATMOSPHERE / 760, _d(M=1, L=-1, T=-2), False, ("torr",))
+_atom("mmHg", 133.322387415, _d(M=1, L=-1, T=-2))
+_atom("barye", 0.1, _d(M=1, L=-1, T=-2), False, ("barye",))
+# Power
+_atom("W", 1.0, _d(M=1, L=2, T=-3), True, ("watt",))
+# Volume
+_atom("L", 1e-3, _d(L=3), True, ("litre", "liter"), ("l",))
+_atom("cc", 1e-6, _d(L=3))
+# Acceleration
+_atom("gn", STANDARD_GRAVITY, _d(L=1, T=-2), False, ("standard_gravity",), ("g_n",))
+
+# SI prefixes. "da" must be tried before "d".
+PREFIXES: dict[str, float] = {
+    "da": 1e1, "Y": 1e24, "Z": 1e21, "E": 1e18, "P": 1e15, "T": 1e12, "G": 1e9,
+    "M": 1e6, "k": 1e3, "h": 1e2, "d": 1e-1, "c": 1e-2, "m": 1e-3, "u": 1e-6,
+    "µ": 1e-6, "n": 1e-9, "p": 1e-12, "f": 1e-15, "a": 1e-18,
+}
+NAME_PREFIXES: dict[str, float] = {
+    "tera": 1e12, "giga": 1e9, "mega": 1e6, "kilo": 1e3, "hecto": 1e2, "deci": 1e-1,
+    "centi": 1e-2, "milli": 1e-3, "micro": 1e-6, "nano": 1e-9, "pico": 1e-12,
+}
+
+# Whole-expression aliases, written in normalized form (see parsing.normalize).
+# These cover spellings whose literal reading would be dimensionally wrong.
+ALIASES: dict[str, str] = {
+    # Drop-weight impact energies are reported as kg·m meaning kilogram-force metres.
+    "kg·m": "kgf·m",
+    "kg·cm": "kgf·cm",
+    "kpm": "kgf·m",
+    "Nm": "N·m",
+    # "ft-lb" conventionally means foot-pound force.
+    "ft·lb": "ft·lbf",
+    "in·lb": "in·lbf",
+    "foot·pound": "ft·lbf",
+    "inch·pound": "in·lbf",
+    "g0": "gn",
+    "fps": "ft/s",
+}
+
+# Representative units per dimension, for list_units() and documentation.
+COMMON_UNITS: dict[str, list[str]] = {
+    ENERGY: ["J", "mJ", "kJ", "MJ", "GJ", "erg", "cal", "kcal", "cal_IT", "kcal_IT", "eV",
+             "Wh", "kWh", "BTU", "ft·lbf", "in·lbf", "kgf·m", "kgf·cm", "g_TNT", "kg_TNT",
+             "t_TNT", "kt_TNT"],
+    SPECIFIC_ENERGY: ["J/kg", "J/g", "kJ/kg", "kJ/g", "MJ/kg", "cal/g", "cal/kg", "kcal/kg",
+                      "kcal/g", "erg/g", "BTU/lb"],
+    MOLAR_ENERGY: ["J/mol", "kJ/mol", "cal/mol", "kcal/mol", "eV/molecule"],
+    MOLAR_MASS: ["g/mol", "kg/mol"],
+    MASS: ["kg", "g", "mg", "ug", "t", "lb", "oz", "gr"],
+    LENGTH: ["m", "cm", "mm", "um", "nm", "km", "Å", "in", "ft", "yd"],
+    TIME: ["s", "ms", "us", "ns", "min", "h"],
+    TEMPERATURE: ["K"],
+    PRESSURE: ["Pa", "kPa", "MPa", "GPa", "bar", "kbar", "Mbar", "atm", "psi", "ksi", "Torr",
+               "mmHg", "dyn/cm^2", "J/cm^3"],
+    VELOCITY: ["m/s", "km/s", "mm/us", "cm/us", "ft/s"],
+    DENSITY: ["kg/m^3", "g/cm^3", "g/cc", "g/L", "lb/in^3", "lb/ft^3"],
+    ACCELERATION: ["m/s^2", "ft/s^2", "gn"],
+    FORCE: ["N", "kN", "dyn", "lbf", "kgf"],
+    POWER: ["W", "kW", "MW", "BTU/h"],
+    VOLUME: ["m^3", "L", "mL", "cm^3", "cc", "in^3", "ft^3"],
+    SPECIFIC_VOLUME: ["m^3/kg", "cm^3/g", "L/kg"],
+    MOLAR_VOLUME: ["m^3/mol", "cm^3/mol", "L/mol"],
+    SPECIFIC_HEAT_CAPACITY: ["J/(kg·K)", "J/(g·K)", "kJ/(kg·K)", "cal/(g·K)"],
+    MOLAR_HEAT_CAPACITY: ["J/(mol·K)", "cal/(mol·K)"],
+}

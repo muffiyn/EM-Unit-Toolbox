@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 
 from .converter import UnitError, convert, list_units
 from .impact import potential_energy
@@ -17,6 +18,11 @@ def _quantity(text: str) -> tuple[float, str]:
 
 
 def main(argv: list[str] | None = None) -> int:
+    # Unit symbols use characters like "·", "µ" and "⁻" that legacy Windows code
+    # pages cannot encode; escape them rather than crash.
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            stream.reconfigure(errors="backslashreplace")
     parser = argparse.ArgumentParser(prog="em-units", description=__doc__)
     sub = parser.add_subparsers(dest="command", required=True)
 
