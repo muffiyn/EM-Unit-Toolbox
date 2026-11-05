@@ -47,18 +47,30 @@ def convert(value: float, from_unit: str | Unit, to_unit: str | Unit) -> float:
     1.0
     >>> convert(1, "kcal mol-1", "kJ·mol⁻¹")
     4.184
+    >>> convert(25, "°C", "K")
+    298.15
+
+    Units carrying different substance labels (``"g LA"`` vs ``"g MF"``) are
+    not interchangeable and raise ``UnitError``; a labelled unit converts to
+    the same label or to an unlabelled unit (``"g LA"`` -> ``"mg"``).
     """
     src, dst = get_unit(from_unit), get_unit(to_unit)
     if src.dims != dst.dims:
         raise UnitError(
             f"Cannot convert {src.symbol} ({src.dimension}) to {dst.symbol} ({dst.dimension})"
         )
+    if src.qualifier and dst.qualifier and src.qualifier != dst.qualifier:
+        raise UnitError(
+            f"Cannot convert between different substances/conditions: "
+            f"{src.qualifier!r} vs {dst.qualifier!r}"
+        )
     if src.exact is not None and dst.exact is not None:
-        ratio = src.exact / dst.exact
         try:
-            return float(Fraction(value) * ratio)  # one rounding: 1500 cal/g -> 6.276 MJ/kg
+            # One rounding at the end: 1500 cal/g -> 6.276 MJ/kg, 25 °C -> 298.15 K
+            si = Fraction(value) * src.exact + src.offset
+            return float((si - dst.offset) / dst.exact)
         except (TypeError, ValueError, OverflowError):  # nan, inf, non-float types
-            return value * float(ratio)
+            pass
     return dst.from_base(src.to_base(value))
 
 

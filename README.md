@@ -50,6 +50,25 @@ drop_height(7.5, "J", 2.5, "kg", to="cm")         # 30.59 cm
 drop_mass(7.5, "J", 30, "cm", to="kg")            # 2.549 kg
 ```
 
+#### Weight of a mass (friction sensitivity loads)
+
+```python
+from em_units import weight_force, force_to_mass
+
+weight_force(36, "kg")              # 353.04 N (BAM friction 36 kg load)
+weight_force(10, "lb", to="lbf")    # ≈ 10.0
+force_to_mass(353.04, "N", to="kg") # ≈ 36.0
+```
+
+#### ESD spark energy (E = ½·C·V²)
+
+```python
+from em_units import esd_energy, esd_voltage
+
+esd_energy(500, "pF", 5, "kV", to="mJ")  # 6.25
+esd_voltage(6.25, "mJ", 500, "pF")       # 5.0 kV
+```
+
 #### Specific energy × mass
 
 ```python
@@ -86,9 +105,18 @@ J/g    J g-1    J g^-1    J·g⁻¹    J*g**-1    J.g-1    joules per gram
   in the denominator, so `J/g K`, `J/g/K` and `J/(g·K)` are the same.
 - **Prefixes:** any SI prefix on any metric unit (`kJ`, `µs`, `us`, `GPa`,
   `kt TNT`), plus spelled-out names (`kilojoules`, `grams`, `cubic centimetre`).
-- **Temperature:** `°C`/`°F` are accepted inside compound units as temperature
-  intervals (`cal/(g·°C)`). A bare `°C` raises an error, since converting it to K
-  needs an offset.
+- **Numbers:** `g/100 g`, `cc/40 h`, `10^6 J/mol` and `x 10^6 J/mol` scale
+  the unit; `10-5/°C` means 10⁻⁵ per °C.
+- **Run-together symbols:** `Wm-1/K` is read as `W·m⁻¹/K` when there is
+  exactly one way to split it.
+- **Temperature:** on its own, `°C`/`°F` is an absolute temperature
+  (`convert(25, "°C", "K")` is 298.15). Inside compound units it is a
+  temperature interval: `cal/(g·°C)`, `°C/min`.
+- **Labels:** words naming a substance or condition are kept as the unit's
+  `qualifier`, not parsed as units: `% TNT`, `% ε-CL-20`, `g LA`, `g MF`,
+  `g/100 g solvent`, `J/g, 25 °C`. A labelled unit converts to the same label
+  or to an unlabelled unit, but `g LA` → `g MF` raises `UnitError`.
+  `g TNT`/`kg TNT` (a mass unit directly before TNT) is TNT-equivalent energy.
 - **Case:** symbols are case-sensitive first, so `mJ` and `MJ` stay distinct.
   An unambiguous case-insensitive match (`KJ/KG`, `Joules`) is accepted, and
   an ambiguous one (`MPA`: mPa or MPa?) raises an error.
@@ -111,10 +139,13 @@ The building blocks are:
 |---|---|
 | Energy | J, erg, cal, cal_IT, Cal (= kcal), eV, Wh, BTU, g_TNT, t_TNT |
 | Mass | g, t, lb, oz, gr (grain) |
-| Length | m, Å, in, ft, yd |
-| Time | s, min, h |
+| Length | m, Å, in, ft, yd, mil, micron |
+| Time | s, min, h, d (day), wk, yr |
 | Amount | mol, molecule / atom / particle |
-| Temperature | K, °C and °F (intervals only) |
+| Temperature | K, °C, °F, °R |
+| Angle | rad, ° (deg) |
+| Ratios | %, ‰, ppm, ppb |
+| Electrical | A, C, V, Ω, F, D (debye) |
 | Force | N, dyn, lbf, kgf (kp) |
 | Pressure | Pa, bar, atm, psi, ksi, Torr, mmHg, barye |
 | Power | W |

@@ -143,10 +143,29 @@ def test_fahrenheit_interval():
     assert math.isclose(convert(1, "BTU/(lb·°F)", "J/(kg·K)"), 4186.8, rel_tol=1e-9)
 
 
-@pytest.mark.parametrize("bare", ["°C", "degF", "℃"])
-def test_bare_celsius_is_rejected(bare):
-    with pytest.raises(UnitError, match="offset"):
-        get_unit(bare)
+@pytest.mark.parametrize(
+    "value, src, dst, expected",
+    [
+        (25, "°C", "K", 298.15),
+        (25, "℃", "K", 298.15),
+        (25, "deg C", "K", 298.15),
+        (25, "degrees Celsius", "K", 298.15),
+        (0, "K", "°C", -273.15),
+        (300, "K", "°C", 26.85),
+        (32, "°F", "°C", 0),
+        (212, "°F", "°C", 100),
+        (-40, "°C", "°F", -40),
+        (100, "°C", "°R", 671.67),
+    ],
+)
+def test_absolute_temperatures(value, src, dst, expected):
+    assert math.isclose(convert(value, src, dst), expected, abs_tol=1e-9)
+
+
+def test_celsius_is_an_interval_inside_compound_units():
+    # A heating rate of 10 °C/min is 10 K/min: no offset.
+    assert math.isclose(convert(10, "°C/min", "K/min"), 10)
+    assert math.isclose(convert(1, "10-5/°C", "1/K"), 1e-5)
 
 
 def test_per_atom_and_per_molecule():
@@ -165,3 +184,72 @@ def test_conversions_are_exact_where_possible():
 def test_non_string_unit():
     with pytest.raises(TypeError):
         get_unit(5)
+
+
+@pytest.mark.parametrize(
+    "spelling, unit, label",
+    [
+        ("% TNT", "%", "TNT"),
+        ("% ε-CL-20", "%", "ε-CL-20"),
+        ("% PA", "%", "PA"),
+        ("g LA", "g", "LA"),
+        ("g MF", "g", "MF"),
+        ("g tetryl", "g", "tetryl"),
+        ("g/100 g solvent", "g/100 g", "solvent"),
+        ("J/g, 25 °C", "J/g", "25 °C"),
+    ],
+)
+def test_substance_labels(spelling, unit, label):
+    u = get_unit(spelling)
+    assert same(spelling, unit)
+    assert u.qualifier == label
+
+
+def test_tnt_after_mass_is_energy_but_percent_tnt_is_a_label():
+    assert dimension_of("g TNT") == "energy"
+    assert dimension_of("% TNT") == "dimensionless"
+
+
+def test_label_conversions():
+    assert math.isclose(convert(1, "g LA", "mg"), 1000)
+    assert math.isclose(convert(1, "g LA", "mg LA"), 1000)
+    with pytest.raises(UnitError, match="different substances"):
+        convert(1, "g LA", "g MF")
+
+
+def test_reference_condition_is_not_a_unit():
+    u = get_unit("25 °C, H2O (l)")
+    assert u.dimension == "dimensionless"
+    assert u.qualifier == "25 °C, H2O (l)"
+
+
+@pytest.mark.parametrize(
+    "value, src, dst, expected",
+    [
+        (1, "10-5/°C", "1/K", 1e-5),
+        (2, "x 10^6 J/mol", "kJ/mol", 2000),
+        (1, "Wm-1/K", "W/(m·K)", 1),
+        (1, "J m-1 K-1 s-1", "W m-1 K-1", 1),
+        (1, "kg/cm2", "MPa", 0.0980665),
+        (1, "D", "C·m", 3.3356409519815204e-30),
+        (2, "days", "h", 48),
+        (1000, "mils", "in", 1),
+        (1, "micron", "µm", 1),
+        (90, "°", "rad", math.pi / 2),
+        (5, "%", "‰", 50),
+        (1, "cc/40 h", "mL/h", 1 / 40),
+        (1, "mols.", "mmol", 1000),
+    ],
+)
+def test_dataset_style_conversions(value, src, dst, expected):
+    assert math.isclose(convert(value, src, dst), expected, rel_tol=1e-12)
+
+
+def test_angle_and_percent_are_not_interchangeable():
+    with pytest.raises(UnitError):
+        convert(1, "%", "°")
+
+
+def test_garbage_is_not_a_label():
+    with pytest.raises(UnitError):
+        get_unit("J $")

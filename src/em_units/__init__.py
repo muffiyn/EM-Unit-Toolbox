@@ -12,7 +12,8 @@ from .converter import (
     to_si,
     total_to_specific,
 )
-from .impact import drop_height, drop_mass, potential_energy
+from .electrostatic import esd_energy, esd_voltage
+from .impact import drop_height, drop_mass, force_to_mass, potential_energy, weight_force
 from .units import STANDARD_GRAVITY, Unit
 
 __version__ = "0.1.0"
@@ -25,6 +26,9 @@ __all__ = [
     "dimension_of",
     "drop_height",
     "drop_mass",
+    "esd_energy",
+    "esd_voltage",
+    "force_to_mass",
     "get_unit",
     "list_units",
     "molar_to_specific",
@@ -33,4 +37,5 @@ __all__ = [
     "specific_to_total",
     "to_si",
     "total_to_specific",
+    "weight_force",
 ]

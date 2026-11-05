@@ -8,7 +8,7 @@ and a height into an energy and back again.
 from __future__ import annotations
 
 from .converter import UnitError, get_unit
-from .units import ACCELERATION, ENERGY, LENGTH, MASS, STANDARD_GRAVITY
+from .units import ACCELERATION, ENERGY, FORCE, LENGTH, MASS, STANDARD_GRAVITY
 
 
 def _base(value: float, unit: str, dimension: str) -> float:
@@ -81,6 +81,39 @@ def drop_mass(
         raise ValueError("Height must be positive")
     e = _base(energy, energy_unit, ENERGY)
     return _base_to(e / (_gravity(g, g_unit) * h), to, MASS)
+
+
+def weight_force(
+    mass: float,
+    mass_unit: str,
+    to: str = "N",
+    g: float = STANDARD_GRAVITY,
+    g_unit: str = "m/s^2",
+) -> float:
+    """Force exerted by a mass under gravity: F = m·g.
+
+    Friction-sensitivity loads are often reported as a mass (kg, lb) meaning
+    the weight of that mass.
+
+    >>> round(weight_force(36, "kg"), 6)  # BAM friction 36 kg load
+    353.0394
+    >>> round(weight_force(1, "lb", to="lbf"), 12)
+    1.0
+    """
+    m = _base(mass, mass_unit, MASS)
+    return _base_to(m * _gravity(g, g_unit), to, FORCE)
+
+
+def force_to_mass(
+    force: float,
+    force_unit: str,
+    to: str = "kg",
+    g: float = STANDARD_GRAVITY,
+    g_unit: str = "m/s^2",
+) -> float:
+    """Mass whose weight is the given force: m = F / g."""
+    f = _base(force, force_unit, FORCE)
+    return _base_to(f / _gravity(g, g_unit), to, MASS)
 
 
 def _base_to(value_si: float, unit: str, dimension: str) -> float:

@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from em_units import UnitError, drop_height, drop_mass, potential_energy
+from em_units import UnitError, drop_height, drop_mass, force_to_mass, potential_energy, weight_force
 
 
 def test_potential_energy_si():
@@ -56,3 +56,15 @@ def test_invalid_values():
         drop_height(1, "J", 0, "kg")
     with pytest.raises(ValueError):
         potential_energy(1, "kg", 1, "m", g=0)
+
+
+def test_weight_force():
+    assert math.isclose(weight_force(36, "kg"), 36 * 9.80665)
+    assert math.isclose(weight_force(1, "lb", to="lbf"), 1)
+    assert math.isclose(weight_force(10, "lb"), 10 * 0.45359237 * 9.80665)
+    assert math.isclose(force_to_mass(weight_force(2.5, "kg"), "N"), 2.5)
+
+
+def test_weight_force_rejects_wrong_dimension():
+    with pytest.raises(UnitError):
+        weight_force(1, "N")

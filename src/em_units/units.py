@@ -38,13 +38,14 @@ ATMOSPHERE = 101325.0  # Pa
 
 # --- Dimensions ---------------------------------------------------------------
 
-Dims = tuple  # (mass, length, time, amount, temperature) exponents
-DIM_SYMBOLS = ("M", "L", "T", "N", "Θ")
-SI_SYMBOLS = ("kg", "m", "s", "mol", "K")
+Dims = tuple  # (mass, length, time, amount, temperature, current, angle) exponents
+DIM_SYMBOLS = ("M", "L", "T", "N", "Θ", "I", "∠")
+SI_SYMBOLS = ("kg", "m", "s", "mol", "K", "A", "rad")
+NDIMS = len(DIM_SYMBOLS)
 
 
-def _d(M: int = 0, L: int = 0, T: int = 0, N: int = 0, K: int = 0) -> Dims:
-    return (M, L, T, N, K)
+def _d(M: int = 0, L: int = 0, T: int = 0, N: int = 0, K: int = 0, I: int = 0, A: int = 0) -> Dims:  # noqa: E741
+    return (M, L, T, N, K, I, A)
 
 
 ENERGY = "energy"
@@ -71,6 +72,20 @@ SPECIFIC_HEAT_CAPACITY = "specific heat capacity"
 MOLAR_HEAT_CAPACITY = "molar heat capacity"
 FREQUENCY = "frequency"
 DIMENSIONLESS = "dimensionless"
+ANGLE = "angle"
+CURRENT = "electric current"
+CHARGE = "electric charge"
+VOLTAGE = "voltage"
+RESISTANCE = "electrical resistance"
+CAPACITANCE = "capacitance"
+DIPOLE_MOMENT = "electric dipole moment"
+THERMAL_CONDUCTIVITY = "thermal conductivity"
+HEATING_RATE = "heating rate"
+THERMAL_EXPANSION = "thermal expansion coefficient"
+SPECIFIC_SURFACE_AREA = "specific surface area"
+AREAL_DENSITY = "areal density"
+DIFFUSIVITY = "diffusivity"
+VOLUME_FLOW = "volume flow rate"
 
 # Named dimension -> (dimension vector, SI symbol). Energy density (J/m^3)
 # shares the pressure vector, so it is reported (and converts) as pressure.
@@ -99,6 +114,20 @@ DIMENSIONS: dict[str, tuple[Dims, str]] = {
     MOLAR_HEAT_CAPACITY: (_d(M=1, L=2, T=-2, N=-1, K=-1), "J/(mol·K)"),
     FREQUENCY: (_d(T=-1), "1/s"),
     DIMENSIONLESS: (_d(), "1"),
+    ANGLE: (_d(A=1), "rad"),
+    CURRENT: (_d(I=1), "A"),
+    CHARGE: (_d(T=1, I=1), "C"),
+    VOLTAGE: (_d(M=1, L=2, T=-3, I=-1), "V"),
+    RESISTANCE: (_d(M=1, L=2, T=-3, I=-2), "Ω"),
+    CAPACITANCE: (_d(M=-1, L=-2, T=4, I=2), "F"),
+    DIPOLE_MOMENT: (_d(L=1, T=1, I=1), "C·m"),
+    THERMAL_CONDUCTIVITY: (_d(M=1, L=1, T=-3, K=-1), "W/(m·K)"),
+    HEATING_RATE: (_d(T=-1, K=1), "K/s"),
+    THERMAL_EXPANSION: (_d(K=-1), "1/K"),
+    SPECIFIC_SURFACE_AREA: (_d(M=-1, L=2), "m^2/kg"),
+    AREAL_DENSITY: (_d(M=1, L=-2), "kg/m^2"),
+    DIFFUSIVITY: (_d(L=2, T=-1), "m^2/s"),
+    VOLUME_FLOW: (_d(L=3, T=-1), "m^3/s"),
 }
 _NAME_BY_DIMS = {dims: name for name, (dims, _) in DIMENSIONS.items()}
 
@@ -127,24 +156,37 @@ def si_symbol(dims: Dims) -> str:
 
 @dataclass(frozen=True, eq=False)
 class Unit:
-    """A (possibly compound) unit: its symbol, dimension and factor to SI."""
+    """A (possibly compound) unit: its symbol, dimension and factor to SI.
+
+    ``offset`` is non-zero only for absolute temperature scales (°C, °F):
+    value_in_SI = value_in_unit * factor + offset. ``qualifier`` holds a
+    substance or condition label such as ``"TNT"`` in ``"% TNT"`` or ``"LA"``
+    in ``"g LA"``.
+    """
 
     symbol: str
     dimension: str
-    factor: float  # value_in_SI = value_in_unit * factor
+    factor: float  # value_in_SI = value_in_unit * factor + offset
     dims: Dims = ()
     exact: Fraction | None = field(default=None, repr=False)  # exact factor, when known
+    offset: Fraction = field(default=Fraction(0), repr=False)
+    qualifier: str = ""
 
     def to_base(self, value: float) -> float:
-        return value * self.factor
+        return value * self.factor + float(self.offset)
 
     def from_base(self, value: float) -> float:
-        return value / self.factor
+        return (value - float(self.offset)) / self.factor
 
     def __eq__(self, other: object) -> bool:
         if not isinstance(other, Unit):
             return NotImplemented
-        return self.dims == other.dims and math.isclose(self.factor, other.factor, rel_tol=1e-12)
+        return (
+            self.dims == other.dims
+            and math.isclose(self.factor, other.factor, rel_tol=1e-12)
+            and self.offset == other.offset
+            and self.qualifier == other.qualifier
+        )
 
     def __hash__(self) -> int:
         return hash(self.dims)
@@ -182,20 +224,41 @@ _atom("m", 1.0, _d(L=1), True, ("metre", "meter"))
 _atom("in", INCH, _d(L=1), False, ("inch",))
 _atom("ft", FOOT, _d(L=1), False, ("foot", "feet"))
 _atom("yd", 3 * FOOT, _d(L=1), False, ("yard",))
+_atom("mil", INCH / 1000, _d(L=1), False, ("mil", "thou"))
+_atom("micron", 1e-6, _d(L=1), False, ("micron",))
 _atom("Å", 1e-10, _d(L=1), False, ("angstrom", "ångström"))
 # Time
-_atom("s", 1.0, _d(T=1), True, ("second",), ("sec",))
-_atom("min", 60.0, _d(T=1), False, ("minute",))
-_atom("h", 3600.0, _d(T=1), False, ("hour",), ("hr",))
+_atom("s", 1.0, _d(T=1), True, ("second",), ("sec", "secs"))
+_atom("min", 60.0, _d(T=1), False, ("minute",), ("mins",))
+_atom("h", 3600.0, _d(T=1), False, ("hour",), ("hr", "hrs"))
+_atom("d", 86400.0, _d(T=1), False, ("day",))
+_atom("wk", 7 * 86400.0, _d(T=1), False, ("week",))
+_atom("yr", 365.25 * 86400.0, _d(T=1), False, ("year",), ("yrs",))  # Julian year
 # Amount of substance
-_atom("mol", 1.0, _d(N=1), True, ("mole",))
+_atom("mol", 1.0, _d(N=1), True, ("mole",), ("mols",))
 _atom("molecule", float(1 / Fraction("6.02214076e23")), _d(N=1), False, ("molecule", "particle", "atom"))
-# Temperature (absolute / temperature differences)
+# Temperature. On their own, °C and °F are absolute scales with an offset
+# (25 °C -> 298.15 K); inside compound units such as J/(g·°C) or °C/min they
+# are temperature intervals.
 _atom("K", 1.0, _d(K=1), True, ("kelvin",))
-# Degree intervals, for compound units like J/(g·°C). Absolute °C/°F readings
-# need an offset, which the parser rejects (see parsing.parse_unit).
-_atom("degC", 1.0, _d(K=1), False, (), ("deg_C",))
-_atom("degF", 5 / 9, _d(K=1), False, (), ("deg_F",))
+_atom("degC", 1.0, _d(K=1), False, ("celsius", "degree_celsius"), ("deg_C",))
+_atom("degF", 5 / 9, _d(K=1), False, ("fahrenheit", "degree_fahrenheit"), ("deg_F",))
+_atom("degR", 5 / 9, _d(K=1), False, ("rankine", "degree_rankine"), ("deg_R",))
+# Plane angle
+_atom("rad", 1.0, _d(A=1), True, ("radian",))
+_atom("deg", math.pi / 180, _d(A=1), False, ("degree",))
+# Dimensionless ratios
+_atom("%", 1e-2, _d(), False, ("percent",), ("pct",))
+_atom("‰", 1e-3, _d(), False, ("permille",))
+_atom("ppm", 1e-6, _d())
+_atom("ppb", 1e-9, _d())
+# Electrical (ESD sensitivity, dipole moments)
+_atom("A", 1.0, _d(I=1), True, ("ampere",), ("amp", "amps"))
+_atom("C", 1.0, _d(T=1, I=1), True, ("coulomb",))
+_atom("V", 1.0, _d(M=1, L=2, T=-3, I=-1), True, ("volt",))
+_atom("Ω", 1.0, _d(M=1, L=2, T=-3, I=-2), True, ("ohm",), ("ohm", "ohms"))
+_atom("F", 1.0, _d(M=-1, L=-2, T=4, I=2), True, ("farad",))
+_atom("D", float(Fraction("1e-21") / 299792458), _d(L=1, T=1, I=1), False, ("debye",))
 # Energy
 _atom("J", 1.0, _E, True, ("joule",))
 _atom("erg", ERG, _E, True, ("erg",))
@@ -229,6 +292,14 @@ _atom("cc", 1e-6, _d(L=3))
 # Acceleration
 _atom("gn", STANDARD_GRAVITY, _d(L=1, T=-2), False, ("standard_gravity",), ("g_n",))
 
+# Absolute-scale offsets, in kelvin, applied when the unit stands alone.
+OFFSETS: dict[str, Fraction] = {
+    "degC": Fraction("273.15"),
+    "deg_C": Fraction("273.15"),
+    "degF": Fraction("459.67") * Fraction(5, 9),
+    "deg_F": Fraction("459.67") * Fraction(5, 9),
+}
+
 # SI prefixes. "da" must be tried before "d".
 PREFIXES: dict[str, float] = {
     "da": 1e1, "Y": 1e24, "Z": 1e21, "E": 1e18, "P": 1e15, "T": 1e12, "G": 1e9,
@@ -253,9 +324,33 @@ ALIASES: dict[str, str] = {
     "in·lb": "in·lbf",
     "foot·pound": "ft·lbf",
     "inch·pound": "in·lbf",
+    # Loading/consolidation pressures are reported as kg/cm² meaning kgf/cm².
+    "kg/cm2": "kgf/cm^2",
+    "kg/cm^2": "kgf/cm^2",
+    "kg·cm-2": "kgf·cm^-2",
+    "kg·cm^-2": "kgf·cm^-2",
+    "kg/mm2": "kgf/mm^2",
+    "kg/mm^2": "kgf/mm^2",
     "g0": "gn",
     "fps": "ft/s",
 }
+
+# Words that label *what* is measured rather than a unit: "% TNT", "g LA",
+# "g/100 g solvent". Matched case-insensitively against trailing words; any
+# trailing word that is not a unit at all is also treated as a label.
+SUBSTANCE_LABELS: frozenset[str] = frozenset(
+    w.lower()
+    for w in (
+        # explosives and energetic materials
+        "TNT", "RDX", "HMX", "PETN", "CL-20", "HNIW", "TATB", "HNS", "NTO", "FOX-7",
+        "LLM-105", "TNAZ", "ADN", "AN", "AP", "NC", "NG", "NQ", "PA", "LA", "LS", "MF",
+        "DDNP", "TACOT", "DNAN", "TEX", "BTF", "KDNBF", "tetryl", "picric", "azide",
+        "styphnate", "fulminate", "HNAB", "DATB", "TATP", "HMTD", "EGDN", "ETN",
+        # matrices and conditions
+        "solvent", "water", "H2O", "air", "sample", "explosive", "propellant", "charge",
+        "salt", "solution", "mixture", "binder", "composition",
+    )
+)
 
 # Representative units per dimension, for list_units() and documentation.
 COMMON_UNITS: dict[str, list[str]] = {
@@ -269,7 +364,7 @@ COMMON_UNITS: dict[str, list[str]] = {
     MASS: ["kg", "g", "mg", "ug", "t", "lb", "oz", "gr"],
     LENGTH: ["m", "cm", "mm", "um", "nm", "km", "Å", "in", "ft", "yd"],
     TIME: ["s", "ms", "us", "ns", "min", "h"],
-    TEMPERATURE: ["K"],
+    TEMPERATURE: ["K", "degC", "degF", "degR"],
     PRESSURE: ["Pa", "kPa", "MPa", "GPa", "bar", "kbar", "Mbar", "atm", "psi", "ksi", "Torr",
                "mmHg", "dyn/cm^2", "J/cm^3"],
     VELOCITY: ["m/s", "km/s", "mm/us", "cm/us", "ft/s"],
@@ -282,4 +377,19 @@ COMMON_UNITS: dict[str, list[str]] = {
     MOLAR_VOLUME: ["m^3/mol", "cm^3/mol", "L/mol"],
     SPECIFIC_HEAT_CAPACITY: ["J/(kg·K)", "J/(g·K)", "kJ/(kg·K)", "cal/(g·K)"],
     MOLAR_HEAT_CAPACITY: ["J/(mol·K)", "cal/(mol·K)"],
+    THERMAL_CONDUCTIVITY: ["W/(m·K)", "W·m^-1·K^-1", "cal/(cm·s·K)"],
+    HEATING_RATE: ["K/min", "°C/min", "K/s"],
+    THERMAL_EXPANSION: ["1/K", "1/°C", "ppm/K"],
+    DIMENSIONLESS: ["1", "%", "‰", "ppm", "ppb", "g/100 g"],
+    ANGLE: ["rad", "mrad", "deg"],
+    AREAL_DENSITY: ["kg/m^2", "g/cm^2", "mg/cm^2"],
+    SPECIFIC_SURFACE_AREA: ["m^2/g", "m^2/kg", "cm^2/g"],
+    DIFFUSIVITY: ["m^2/s", "cm^2/s", "mm^2/s"],
+    VOLUME_FLOW: ["m^3/s", "L/min", "cc/h"],
+    CURRENT: ["A", "mA", "uA"],
+    CHARGE: ["C", "mC", "uC", "nC"],
+    VOLTAGE: ["V", "mV", "kV"],
+    RESISTANCE: ["Ω", "kΩ", "MΩ"],
+    CAPACITANCE: ["F", "uF", "nF", "pF"],
+    DIPOLE_MOMENT: ["C·m", "D"],
 }
